@@ -1,0 +1,17 @@
+const path = require('path')
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  images: {
+    domains: ['localhost'],
+  },
+  experimental: {
+    serverComponentsExternalPackages: ['mongoose'],
+  },
+  webpack(config) {
+    config.resolve.alias['@'] = path.resolve(__dirname)
+    return config
+  },
+}
+
+module.exports = nextConfig

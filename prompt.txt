@@ -1,0 +1,434 @@
+# Persian Accounting & Smart Barcode POS System
+
+## Project Overview
+
+Build a modern Persian-language web application that combines Accounting, Inventory Management, and Point of Sale (POS) functionality.
+
+The main competitive advantage of this system is eliminating the need for expensive barcode scanner hardware. Instead, product barcode scanning must be performed using the smartphone camera with maximum speed, accuracy, and reliability.
+
+The application must be designed for small shops, supermarkets, convenience stores, and retail businesses that need a simple, fast, and affordable accounting solution.
+
+---
+
+# Core Requirements
+
+## 1. User Roles
+
+The system must support two completely separate roles:
+
+### Admin
+
+Username: amir
+
+Password: hellogpt4
+
+Admin capabilities:
+
+* View all users
+* Manage all subscriptions
+* Review uploaded payment receipts
+* Approve or reject payments
+* Set subscription prices
+* Configure payment card information
+* View system statistics
+* Manage user accounts
+* Activate/deactivate users
+
+### Regular User
+
+Users must register with:
+
+* First Name
+* Last Name
+* Username
+* Password
+* Subscription Plan Selection
+* Payment Receipt Upload
+
+Users cannot access the application until their payment receipt is approved by the Admin.
+
+---
+
+# Subscription System
+
+## Available Plans
+
+* 1 Month
+* 3 Months
+* 6 Months
+
+### Registration Flow
+
+1. User registers.
+2. User selects a subscription plan.
+3. User uploads a bank transfer receipt.
+4. Admin reviews the receipt.
+5. Admin approves the payment.
+6. User gains access for the selected duration.
+
+### Admin Controls
+
+Admin can:
+
+* Set prices for all plans
+* Change prices anytime
+* Configure destination bank card number
+* Enable/disable plans
+
+---
+
+# Inventory Management
+
+## Product Module
+
+Products must support:
+
+* Product Name
+* Barcode
+* Category
+* Selling Price
+* Stock Quantity
+* Low Stock Warning Level
+* Description (optional)
+* Creation Date
+* Last Update Date
+
+### Product Features
+
+* Create product
+* Edit product
+* Delete product
+* Search product
+* Filter products
+* Barcode generation
+* Barcode editing
+* Inventory adjustment
+
+### Inventory Alerts
+
+When stock reaches the warning threshold:
+
+* Show warning notification
+* Highlight product in inventory list
+
+---
+
+# Categories
+
+Users must be able to:
+
+* Create categories
+* Edit categories
+* Delete categories
+
+Examples:
+
+* Food
+* Drinks
+* Electronics
+* Cosmetics
+* Clothing
+
+---
+
+# POS / Invoice System
+
+This is the most important module.
+
+The POS interface must be extremely fast and simple.
+
+## Product Adding Methods
+
+### Method 1: Barcode Scanning
+
+Use smartphone camera.
+
+Requirements:
+
+* Instant barcode detection
+* Continuous scanning mode
+* Auto-focus support
+* Real-time recognition
+* No page refresh
+* Mobile optimized
+* High accuracy
+* Works in low-light environments
+* Fast scan processing
+
+### Method 2: Product Search
+
+Some products may not have barcodes.
+
+Cashier must be able to:
+
+* Search products instantly
+* Add products to invoice
+* Filter search results in real-time
+
+### Method 3: Manual Price Entry
+
+Some items may not exist in the product database.
+
+Cashier must be able to:
+
+* Enter custom item name
+* Enter custom price
+* Add directly to invoice
+
+---
+
+# Multi-Invoice System
+
+This feature is critical.
+
+A cashier may serve multiple customers simultaneously.
+
+The system must allow:
+
+* Unlimited open invoices
+* Switch between invoices instantly
+* Save invoice state automatically
+* Continue editing any invoice later
+
+Example:
+
+Customer A invoice → Open
+
+Customer B arrives → Open second invoice
+
+Customer C arrives → Open third invoice
+
+Cashier can switch between all invoices without closing any of them.
+
+---
+
+# Customer Information (Optional)
+
+Invoice may optionally include:
+
+* First Name
+* Last Name
+* Phone Number
+
+Customer information should not be mandatory.
+
+---
+
+# Invoice Features
+
+Each invoice must support:
+
+* Invoice Number
+* Date & Time
+* Store Information
+* Product List
+* Quantities
+* Prices
+* Totals
+* Customer Information
+
+### Actions
+
+* Print Invoice
+* Download PDF
+* Share Invoice
+* Edit Invoice
+* Duplicate Invoice
+* Delete Invoice
+
+---
+
+# Invoice Archive
+
+All invoices must be stored permanently.
+
+Features:
+
+* View all invoices
+* Search invoices
+* Filter invoices
+* Edit old invoices
+* Reprint invoices
+* Download invoices again
+
+---
+
+# Settings Module
+
+## Store Information
+
+User can configure:
+
+* Store Name
+* Store Phone Number
+* Store Address
+
+Store name must automatically appear on invoices.
+
+---
+
+## Invoice Appearance
+
+User can configure:
+
+* Invoice Font Size
+* Print Layout
+* Receipt Width
+
+Font size selection should affect printed invoices.
+
+---
+
+# User Experience Requirements
+
+This system must be significantly easier to use than traditional accounting software.
+
+Design principles:
+
+* Minimal clicks
+* Large buttons
+* Mobile-first design
+* Fast navigation
+* Clear typography
+* Clean Persian UI
+* Beginner-friendly interface
+* Optimized for cashiers
+
+The cashier should be able to complete a sale within seconds.
+
+---
+
+# Barcode Technology Requirements
+
+This is the highest priority area of the project.
+
+Implement the best available React-compatible barcode technologies.
+
+Requirements:
+
+* Camera scanning
+* Continuous scan mode
+* Auto detection
+* Very low latency
+* Mobile optimization
+* Error handling
+* Camera permission management
+* Multiple barcode format support
+
+Focus heavily on performance and scanning accuracy.
+
+---
+
+# Technology Stack
+
+Use only JavaScript.
+
+DO NOT use TypeScript anywhere.
+
+## Frontend
+
+* Next.js (Latest Version)
+* React (Latest Version)
+* Tailwind CSS (Latest Version)
+* React Icons
+* React Toastify
+* SweetAlert2
+
+## Backend
+
+* Next.js API Routes
+* Node.js
+* MongoDB
+* Mongoose
+
+## Barcode Packages
+
+Use React-compatible barcode libraries for:
+
+* Barcode Scanning
+* Barcode Generation
+
+Choose the most reliable and actively maintained packages.
+
+## Authentication
+
+* JWT Authentication
+* Role-Based Access Control
+* Secure Password Hashing
+
+---
+
+# Database Collections
+
+## Users
+
+* firstName
+* lastName
+* username
+* password
+* role
+* subscriptionPlan
+* subscriptionStart
+* subscriptionEnd
+* accountStatus
+
+## Products
+
+* name
+* barcode
+* categoryId
+* price
+* stock
+* lowStockLimit
+
+## Categories
+
+* name
+
+## Customers
+
+* firstName
+* lastName
+* phone
+
+## Invoices
+
+* invoiceNumber
+* customer
+* products
+* totals
+* status
+
+## Subscription Plans
+
+* title
+* duration
+* price
+
+## Payment Receipts
+
+* userId
+* receiptImage
+* status
+* adminReviewDate
+
+## Settings
+
+* storeName
+* storePhone
+* storeAddress
+* invoiceFontSize
+
+---
+
+# Language
+
+The entire user interface, dashboard, forms, buttons, invoices, and reports must be fully in Persian (Farsi).
+
+RTL support is required across the entire application.
+
+---
+
+# Final Goal
+
+Create a modern, mobile-friendly Persian accounting and POS platform that replaces expensive barcode scanner hardware with smartphone camera scanning while maintaining exceptional speed, simplicity, reliability, and ease of use.
