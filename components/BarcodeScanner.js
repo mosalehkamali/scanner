@@ -21,15 +21,18 @@ export default function BarcodeScanner({ onDetect, onClose, title = 'اسکن ب
   const stoppedRef    = useRef(false)
   const lastCodeRef   = useRef('')
   const lastTimeRef   = useRef(0)
+  // Canvas for native BarcodeDetector — capturing a frame is more reliable than
+  // passing the <video> element directly on mobile browsers.
+  const canvasRef     = useRef(null)
 
-  const [status, setStatus]       = useState('در حال راه‌اندازی دوربین...')
-  const [hasError, setHasError]   = useState(false)
-  const [flash, setFlash]         = useState(false)
-  const [manualInput, setManual]  = useState('')
+  const [status, setStatus]         = useState('در حال راه‌اندازی دوربین...')
+  const [hasError, setHasError]     = useState(false)
+  const [flash, setFlash]           = useState(false)
+  const [manualInput, setManual]    = useState('')
   const [showManual, setShowManual] = useState(false)
-  const [detected, setDetected]   = useState('')
+  const [detected, setDetected]     = useState('')
 
-  // ── Debounced detection handler ──────────────────────────────────────────
+  // ── Debounced detection handler ───────────────────────────────────────────
   const handleCode = useCallback((code) => {
     if (!code || stoppedRef.current) return
     const now = Date.now()
@@ -43,42 +46,109 @@ export default function BarcodeScanner({ onDetect, onClose, title = 'اسکن ب
     onDetect(code)
   }, [onDetect])
 
-  // ── Camera + scanner bootstrap ───────────────────────────────────────────
+  // ── Camera + scanner bootstrap ────────────────────────────────────────────
   useEffect(() => {
     stoppedRef.current = false
 
+    // ── Native BarcodeDetector path ──────────────────────────────────────
     const startNative = async (stream) => {
       const formats = [
         'ean_13', 'ean_8', 'code_128', 'code_39',
         'upc_a', 'upc_e', 'qr_code', 'itf', 'codabar',
       ]
-      // Filter by what this device supports
       let supported = formats
       try {
-        supported = await window.BarcodeDetector.getSupportedFormats()
-        supported = formats.filter(f => supported.includes(f))
-        if (supported.length === 0) supported = formats
-      } catch {}
+        const all = await window.BarcodeDetector.getSupportedFormats()
+        const filtered = formats.filter(f => all.includes(f))
+        if (filtered.length > 0) supported = filtered
+      } catch { /* ignore — use all formats */ }
 
       const detector = new window.BarcodeDetector({ formats: supported })
+
+      // Use an offscreen canvas to grab a frame — more reliable on Android
+      // than feeding the <video> element directly.
+      const canvas = canvasRef.current || document.createElement('canvas')
+      canvasRef.current = canvas
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
 
       const scan = async () => {
         if (stoppedRef.current) return
         const video = videoRef.current
-        if (video && video.readyState >= 2) {
+        if (video && video.readyState >= 2 && video.videoWidth > 0) {
+          // Match canvas size to actual video frame dimensions
+          if (canvas.width !== video.videoWidth) {
+            canvas.width  = video.videoWidth
+            canvas.height = video.videoHeight
+          }
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
           try {
-            const barcodes = await detector.detect(video)
+            const barcodes = await detector.detect(canvas)
             if (barcodes.length > 0) handleCode(barcodes[0].rawValue)
-          } catch {}
+          } catch { /* detection error — skip frame */ }
         }
         animFrameRef.current = requestAnimationFrame(scan)
       }
       animFrameRef.current = requestAnimationFrame(scan)
+      setStatus('دوربین آماده است — بارکد را جلوی دوربین نگه دارید')
     }
 
+    // ── ZXing fallback path ───────────────────────────────────────────────
     const startZxing = async () => {
       try {
-        // Import formats first so hints are ready for the constructor
+        const { DecodeHintType, BarcodeFormat } = await import('@zxing/library')
+        const hints = new Map([
+          [DecodeHintType.TRY_HARDER, true],
+          [DecodeHintType.POSSIBLE_FORMATS, [
+            BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
+            BarcodeFormat.CODE_128, BarcodeFormat.CODE_39,
+            BarcodeFormat.UPC_A,   BarcodeFormat.UPC_E,
+            BarcodeFormat.QR_CODE, BarcodeFormat.ITF,
+            BarcodeFormat.CODABAR,
+          ]],
+          // Improve read rate on blurry / low-contrast frames
+          [DecodeHintType.ASSUME_GS1, false],
+        ])
+        const { BrowserMultiFormatReader } = await import('@zxing/browser')
+        const reader = new BrowserMultiFormatReader(hints, {
+          delayBetweenScanAttempts: 150,   // scan every 150 ms instead of the 500 ms default
+          delayBetweenScanSuccess:  500,
+        })
+
+        // decodeFromConstraints both starts the camera AND sets srcObject on the
+        // video element, so we must NOT open the stream beforehand on the ZXing path.
+        zxingCtrlRef.current = await reader.decodeFromConstraints(
+          {
+            video: {
+              facingMode:  { exact: 'environment' },   // rear camera — REQUIRED on mobile
+              width:       { ideal: 1280 },
+              height:      { ideal: 720 },
+              focusMode:   { ideal: 'continuous' },     // continuous autofocus
+              exposureMode:{ ideal: 'continuous' },
+            },
+          },
+          videoRef.current,
+          (result, err) => {
+            if (result) handleCode(result.getText())
+            // err is a NotFoundException when no barcode found — safe to ignore
+          },
+        )
+        setStatus('دوربین آماده است — بارکد را نگه دارید')
+      } catch (err) {
+        if (!stoppedRef.current) {
+          // If `exact: 'environment'` fails (e.g. desktop webcam), retry without it
+          if (err?.name === 'OverconstrainedError' || err?.name === 'NotFoundError') {
+            await startZxingFallbackCamera()
+          } else {
+            setStatus('خطا در اسکنر: ' + (err?.message || 'نامشخص'))
+            setHasError(true)
+          }
+        }
+      }
+    }
+
+    // Retry ZXing without `exact` facing-mode constraint (desktop / front-only cameras)
+    const startZxingFallbackCamera = async () => {
+      try {
         const { DecodeHintType, BarcodeFormat } = await import('@zxing/library')
         const hints = new Map([
           [DecodeHintType.TRY_HARDER, true],
@@ -90,22 +160,25 @@ export default function BarcodeScanner({ onDetect, onClose, title = 'اسکن ب
           ]],
         ])
         const { BrowserMultiFormatReader } = await import('@zxing/browser')
-        const reader = new BrowserMultiFormatReader(hints)
-
+        const reader = new BrowserMultiFormatReader(hints, {
+          delayBetweenScanAttempts: 150,
+          delayBetweenScanSuccess:  500,
+        })
         zxingCtrlRef.current = await reader.decodeFromConstraints(
-          { video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } },
+          { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
           videoRef.current,
-          (result) => { if (result) handleCode(result.getText()) }
+          (result) => { if (result) handleCode(result.getText()) },
         )
         setStatus('دوربین آماده است — بارکد را نگه دارید')
       } catch (err) {
         if (!stoppedRef.current) {
-          setStatus('خطا در اسکنر: ' + (err?.message || 'نامشخص'))
+          setStatus('خطا در دسترسی به دوربین: ' + (err?.message || 'نامشخص'))
           setHasError(true)
         }
       }
     }
 
+    // ── Main init ─────────────────────────────────────────────────────────
     const init = async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
         setStatus('مرورگر شما از دسترسی به دوربین پشتیبانی نمی‌کند (HTTPS لازم است)')
@@ -113,28 +186,40 @@ export default function BarcodeScanner({ onDetect, onClose, title = 'اسکن ب
         return
       }
 
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        })
-        if (stoppedRef.current) { stream.getTracks().forEach(t => t.stop()); return }
-        streamRef.current = stream
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          await videoRef.current.play()
-        }
-        setStatus('دوربین آماده است — بارکد را جلوی دوربین نگه دارید')
-
-        if ('BarcodeDetector' in window) {
+      if ('BarcodeDetector' in window) {
+        // Native path: open the stream ourselves so we can read frames into a canvas
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode:  { ideal: 'environment' },
+              width:       { ideal: 1920 },
+              height:      { ideal: 1080 },
+              focusMode:   { ideal: 'continuous' },
+              exposureMode:{ ideal: 'continuous' },
+            },
+          })
+          if (stoppedRef.current) { stream.getTracks().forEach(t => t.stop()); return }
+          streamRef.current = stream
+          const video = videoRef.current
+          if (video) {
+            video.srcObject = stream
+            // Wait for video metadata so videoWidth/Height are known before scanning
+            await new Promise(resolve => {
+              if (video.readyState >= 1) { resolve(); return }
+              video.onloadedmetadata = resolve
+            })
+            await video.play()
+          }
           await startNative(stream)
-        } else {
-          await startZxing()
+        } catch (err) {
+          if (!stoppedRef.current) {
+            setStatus('خطا در دسترسی به دوربین: ' + (err?.message || ''))
+            setHasError(true)
+          }
         }
-      } catch (err) {
-        if (!stoppedRef.current) {
-          setStatus('خطا در دسترسی به دوربین: ' + (err?.message || ''))
-          setHasError(true)
-        }
+      } else {
+        // ZXing path manages the stream internally
+        await startZxing()
       }
     }
 
@@ -144,11 +229,11 @@ export default function BarcodeScanner({ onDetect, onClose, title = 'اسکن ب
       stoppedRef.current = true
       cancelAnimationFrame(animFrameRef.current)
       streamRef.current?.getTracks().forEach(t => t.stop())
-      try { zxingCtrlRef.current?.stop() } catch {}
+      try { zxingCtrlRef.current?.stop() } catch { /* ignore */ }
     }
   }, [handleCode])
 
-  // ── Manual entry ─────────────────────────────────────────────────────────
+  // ── Manual entry ──────────────────────────────────────────────────────────
   const submitManual = () => {
     const code = manualInput.trim()
     if (!code) return
@@ -156,7 +241,7 @@ export default function BarcodeScanner({ onDetect, onClose, title = 'اسکن ب
     setManual('')
   }
 
-  // ── UI ───────────────────────────────────────────────────────────────────
+  // ── UI ────────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       {/* Header */}
