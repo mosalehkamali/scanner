@@ -3,113 +3,22 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { toast } from 'react-toastify'
 import { useReactToPrint } from 'react-to-print'
+import BarcodeScanner from '@/components/BarcodeScanner'
 import {
   FiPlus, FiMinus, FiTrash2, FiX, FiCamera, FiSearch,
   FiShoppingCart, FiPrinter, FiCheck, FiUser, FiDollarSign,
-  FiEdit2, FiChevronDown
+  FiEdit2, FiSave, FiPackage,
 } from 'react-icons/fi'
 
-// ───── Scanner Component ─────
-function BarcodeScanner({ onDetect, onClose }) {
-  const videoRef = useRef(null)
-  const scannerRef = useRef(null)
-  const [status, setStatus] = useState('در حال راه‌اندازی دوربین...')
-  const [hasError, setHasError] = useState(false)
-
-  useEffect(() => {
-    let stopped = false
-    let controls = null
-
-    const startScanner = async () => {
-      try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          setStatus('دسترسی به دوربین ممکن نیست. لطفاً صفحه را از طریق HTTPS باز کنید.')
-          setHasError(true)
-          return
-        }
-
-        const { BrowserMultiFormatReader } = await import('@zxing/browser')
-        const reader = new BrowserMultiFormatReader()
-        scannerRef.current = reader
-
-        const hints = new Map()
-        const { DecodeHintType, BarcodeFormat } = await import('@zxing/library')
-        hints.set(DecodeHintType.TRY_HARDER, true)
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
-          BarcodeFormat.CODE_128, BarcodeFormat.CODE_39,
-          BarcodeFormat.QR_CODE, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
-        ])
-
-        setStatus('دوربین فعال شد — محصول را جلوی دوربین نگه دارید')
-
-        controls = await reader.decodeFromConstraints(
-          { video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } },
-          videoRef.current,
-          (result, err) => {
-            if (result && !stopped) {
-              navigator.vibrate?.(100)
-              onDetect(result.getText())
-            }
-          }
-        )
-      } catch (err) {
-        if (!stopped) {
-          setStatus('خطا در دسترسی به دوربین: ' + (err.message || err))
-          setHasError(true)
-        }
-      }
-    }
-
-    startScanner()
-
-    return () => {
-      stopped = true
-      try { controls?.stop() } catch {}
-      try { scannerRef.current?.reset() } catch {}
-    }
-  }, [onDetect])
-
-  return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      <div className="flex items-center justify-between p-4 bg-black/80">
-        <span className="text-white font-medium">اسکن بارکد</span>
-        <button onClick={onClose} className="text-white p-2">
-          <FiX className="w-6 h-6" />
-        </button>
-      </div>
-
-      <div className="flex-1 relative">
-        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-        {/* scan frame overlay */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-64 h-40 relative">
-            <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400 rounded-tr-lg" />
-            <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400 rounded-tl-lg" />
-            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400 rounded-br-lg" />
-            <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400 rounded-bl-lg" />
-            <div className="absolute top-1/2 -translate-y-1/2 right-0 left-0 h-0.5 bg-green-400/70 animate-pulse" />
-          </div>
-        </div>
-      </div>
-
-      <div className="p-4 bg-black/80 text-center">
-        <p className={`text-sm ${hasError ? 'text-red-400' : 'text-gray-300'}`}>{status}</p>
-      </div>
-    </div>
-  )
-}
-
-// ───── Invoice Print ─────
+// ── Invoice print template (no dark mode — for print) ─────────────────────────
 function InvoicePrint({ invoice, settings }) {
   const fontSizeMap = { small: '11px', medium: '13px', large: '15px' }
   const fontSize = fontSizeMap[settings?.invoiceFontSize || 'medium']
-
   return (
     <div style={{ fontFamily: 'Vazirmatn, sans-serif', direction: 'rtl', fontSize, padding: '10mm' }}>
       <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '8px' }}>
-        {invoice.storeInfo?.name && <div style={{ fontSize: '1.3em', fontWeight: 'bold' }}>{invoice.storeInfo.name}</div>}
-        {invoice.storeInfo?.phone && <div>{invoice.storeInfo.phone}</div>}
+        {invoice.storeInfo?.name    && <div style={{ fontSize: '1.3em', fontWeight: 'bold' }}>{invoice.storeInfo.name}</div>}
+        {invoice.storeInfo?.phone   && <div>{invoice.storeInfo.phone}</div>}
         {invoice.storeInfo?.address && <div style={{ fontSize: '0.85em' }}>{invoice.storeInfo.address}</div>}
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -155,23 +64,23 @@ function InvoicePrint({ invoice, settings }) {
   )
 }
 
-// ───── Customer Modal ─────
+// ── Customer info modal ────────────────────────────────────────────────────────
 function CustomerModal({ customer, onChange, onClose }) {
   const [form, setForm] = useState(customer || { firstName: '', lastName: '', phone: '' })
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm">
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <h3 className="font-bold text-gray-800">اطلاعات مشتری</h3>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><FiX /></button>
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-sm animate-fade-up">
+        <div className="flex items-center justify-between p-5 border-b border-white/10">
+          <h3 className="font-heading font-bold text-white">اطلاعات مشتری</h3>
+          <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-white"><FiX /></button>
         </div>
-        <div className="p-4 space-y-3">
+        <div className="p-5 space-y-3">
           <input className="input-field" placeholder="نام" value={form.firstName}
             onChange={e => setForm({ ...form, firstName: e.target.value })} />
           <input className="input-field" placeholder="نام خانوادگی" value={form.lastName}
             onChange={e => setForm({ ...form, lastName: e.target.value })} />
           <input className="input-field" placeholder="شماره موبایل" value={form.phone}
-            onChange={e => setForm({ ...form, phone: e.target.value })} />
+            onChange={e => setForm({ ...form, phone: e.target.value })} dir="ltr" />
           <button onClick={() => { onChange(form); onClose() }} className="btn-primary w-full">ذخیره</button>
         </div>
       </div>
@@ -179,7 +88,7 @@ function CustomerModal({ customer, onChange, onClose }) {
   )
 }
 
-// ───── Manual Item Modal ─────
+// ── Manual item modal ──────────────────────────────────────────────────────────
 function ManualItemModal({ onAdd, onClose }) {
   const [form, setForm] = useState({ name: '', price: '', quantity: '1' })
   const handleAdd = () => {
@@ -188,13 +97,13 @@ function ManualItemModal({ onAdd, onClose }) {
     onClose()
   }
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm">
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <h3 className="font-bold text-gray-800">افزودن آیتم دستی</h3>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><FiX /></button>
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-sm animate-fade-up">
+        <div className="flex items-center justify-between p-5 border-b border-white/10">
+          <h3 className="font-heading font-bold text-white">افزودن آیتم دستی</h3>
+          <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-white"><FiX /></button>
         </div>
-        <div className="p-4 space-y-3">
+        <div className="p-5 space-y-3">
           <input className="input-field" placeholder="نام آیتم" value={form.name}
             onChange={e => setForm({ ...form, name: e.target.value })} autoFocus />
           <input type="number" className="input-field" placeholder="قیمت (تومان)" value={form.price}
@@ -208,37 +117,35 @@ function ManualItemModal({ onAdd, onClose }) {
   )
 }
 
-// ───── Product Search Modal ─────
+// ── Product search modal ───────────────────────────────────────────────────────
 function ProductSearchModal({ products, onSelect, onClose }) {
   const [search, setSearch] = useState('')
-  const filtered = products.filter(p =>
-    p.name.includes(search) || (p.barcode || '').includes(search)
-  )
+  const filtered = products.filter(p => p.name.includes(search) || (p.barcode || '').includes(search))
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm max-h-[70vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <h3 className="font-bold text-gray-800">جستجوی محصول</h3>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><FiX /></button>
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-sm max-h-[75vh] flex flex-col animate-fade-up">
+        <div className="flex items-center justify-between p-5 border-b border-white/10">
+          <h3 className="font-heading font-bold text-white">جستجوی محصول</h3>
+          <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-white"><FiX /></button>
         </div>
-        <div className="p-3 border-b border-gray-100">
+        <div className="p-3 border-b border-white/10">
           <div className="relative">
-            <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <FiSearch className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 w-4 h-4" />
             <input className="input-field pr-10" placeholder="نام یا بارکد محصول..."
               value={search} onChange={e => setSearch(e.target.value)} autoFocus />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
-            <div className="text-center py-8 text-gray-400 text-sm">محصولی یافت نشد</div>
+            <div className="text-center py-10 text-zinc-500 text-sm">محصولی یافت نشد</div>
           ) : filtered.map(p => (
             <button key={p._id} onClick={() => { onSelect(p); onClose() }}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-50">
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-brand-500/10 transition-colors border-b border-white/5 last:border-0">
               <div className="text-right">
-                <div className="font-medium text-gray-800">{p.name}</div>
-                <div className="text-xs text-gray-400">{p.barcode} — موجودی: {p.stock}</div>
+                <div className="font-medium text-white text-sm">{p.name}</div>
+                <div className="text-xs text-zinc-500 mt-0.5">{p.barcode && <span className="font-mono">{p.barcode} — </span>}موجودی: {p.stock}</div>
               </div>
-              <div className="font-bold text-blue-700 text-sm">{p.price?.toLocaleString('fa-IR')}</div>
+              <div className="font-bold text-brand-300 text-sm font-mono">{p.price?.toLocaleString('fa-IR')}</div>
             </button>
           ))}
         </div>
@@ -247,48 +154,144 @@ function ProductSearchModal({ products, onSelect, onClose }) {
   )
 }
 
-// ───── Main POS ─────
+// ── Quick register modal (barcode not in inventory) ────────────────────────────
+function QuickRegisterModal({ barcode, categories, onSave, onClose }) {
+  const [form,   setForm]   = useState({ name: '', price: '', stock: '1', categoryId: '' })
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    if (!form.name.trim() || !form.price) return toast.error('نام و قیمت الزامی است')
+    setSaving(true)
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          barcode,
+          price: Number(form.price),
+          stock: Number(form.stock) || 0,
+          categoryId: form.categoryId || null,
+          lowStockLimit: 5,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error || 'خطا در ثبت محصول'); return }
+      toast.success(`محصول «${form.name}» ثبت و به فاکتور اضافه شد`)
+      onSave(data.product)
+    } catch {
+      toast.error('خطای اتصال')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-md animate-fade-up">
+        {/* Header */}
+        <div className="p-5 border-b border-white/10">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-heading font-bold text-white">ثبت سریع محصول</h3>
+            <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-white"><FiX /></button>
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs text-zinc-500">بارکد:</span>
+            <span className="text-xs font-mono text-neon-400 bg-neon-400/10 border border-neon-400/20 px-2 py-0.5 rounded-full">{barcode}</span>
+            <span className="text-xs text-zinc-500">— در انبار یافت نشد</span>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">نام محصول *</label>
+            <input className="input-field" placeholder="نام محصول را وارد کنید" value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })} autoFocus />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">قیمت (تومان) *</label>
+              <input type="number" className="input-field" placeholder="0" value={form.price}
+                onChange={e => setForm({ ...form, price: e.target.value })} min="0" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">موجودی اولیه</label>
+              <input type="number" className="input-field" placeholder="1" value={form.stock}
+                onChange={e => setForm({ ...form, stock: e.target.value })} min="0" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">دسته‌بندی</label>
+            <select className="input-field" value={form.categoryId}
+              onChange={e => setForm({ ...form, categoryId: e.target.value })}>
+              <option value="">بدون دسته‌بندی</option>
+              {categories.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <button onClick={handleSave} className="btn-primary flex-1 flex items-center justify-center gap-2" disabled={saving}>
+              {saving ? (
+                <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />در حال ثبت...</>
+              ) : (
+                <><FiSave className="w-4 h-4" />ثبت و افزودن به فاکتور</>
+              )}
+            </button>
+            <button onClick={onClose} className="btn-ghost px-4">لغو</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── POS main component ─────────────────────────────────────────────────────────
 export default function POSPage() {
   const [invoices, setInvoices] = useState([{
     id: Date.now(), title: 'فاکتور ۱',
     items: [], customer: { firstName: '', lastName: '', phone: '' },
     discount: 0, notes: '',
   }])
-  const [activeId, setActiveId] = useState(null)
-  const [products, setProducts] = useState([])
-  const [settings, setSettings] = useState(null)
-  const [showScanner, setShowScanner] = useState(false)
-  const [showSearch, setShowSearch] = useState(false)
-  const [showManual, setShowManual] = useState(false)
-  const [showCustomer, setShowCustomer] = useState(false)
-  const [lastBarcode, setLastBarcode] = useState('')
-  const [saving, setSaving] = useState(false)
-  const printRef = useRef()
-  const [printInvoice, setPrintInvoice] = useState(null)
+  const [activeId,      setActiveId]      = useState(null)
+  const [products,      setProducts]      = useState([])
+  const [categories,    setCategories]    = useState([])
+  const [settings,      setSettings]      = useState(null)
+  const [showScanner,   setShowScanner]   = useState(false)
+  const [showSearch,    setShowSearch]    = useState(false)
+  const [showManual,    setShowManual]    = useState(false)
+  const [showCustomer,  setShowCustomer]  = useState(false)
+  const [quickRegister, setQuickRegister] = useState(null) // barcode string | null
+  const [lastBarcode,   setLastBarcode]   = useState('')
+  const [saving,        setSaving]        = useState(false)
+  const printRef    = useRef()
+  const [printInvoice, setPrintInvoice]  = useState(null)
+
+  const loadProducts = () =>
+    fetch('/api/products').then(r => r.json()).then(d => setProducts(d.products || []))
 
   useEffect(() => {
     setActiveId(invoices[0].id)
-    fetch('/api/products').then(r => r.json()).then(d => setProducts(d.products || []))
+    loadProducts()
     fetch('/api/settings').then(r => r.json()).then(d => setSettings(d.settings))
+    fetch('/api/categories').then(r => r.json()).then(d => setCategories(d.categories || []))
   }, [])
 
   const handlePrint = useReactToPrint({ content: () => printRef.current })
 
   const active = invoices.find(i => i.id === activeId) || invoices[0]
 
-  const updateActive = (updater) => {
+  const updateActive = (updater) =>
     setInvoices(prev => prev.map(inv => inv.id === activeId ? updater(inv) : inv))
-  }
 
   const addNewInvoice = () => {
-    const id = Date.now()
+    const id  = Date.now()
     const num = invoices.length + 1
-    const inv = {
+    setInvoices(prev => [...prev, {
       id, title: `فاکتور ${toPersianNum(num)}`,
-      items: [], customer: { firstName: '', lastName: '', phone: '' },
-      discount: 0, notes: '',
-    }
-    setInvoices(prev => [...prev, inv])
+      items: [], customer: { firstName: '', lastName: '', phone: '' }, discount: 0, notes: '',
+    }])
     setActiveId(id)
   }
 
@@ -304,10 +307,10 @@ export default function POSPage() {
   const addProduct = useCallback((product, qty = 1) => {
     setInvoices(prev => prev.map(inv => {
       if (inv.id !== activeId) return inv
-      const existing = inv.items.findIndex(it => it.productId === product._id)
+      const existingIdx = inv.items.findIndex(it => it.productId === product._id)
       let items
-      if (existing >= 0) {
-        items = inv.items.map((it, i) => i === existing
+      if (existingIdx >= 0) {
+        items = inv.items.map((it, i) => i === existingIdx
           ? { ...it, quantity: it.quantity + qty, total: (it.quantity + qty) * it.price }
           : it
         )
@@ -322,36 +325,30 @@ export default function POSPage() {
       }
       return { ...inv, items }
     }))
-    toast.success(`${product.name} افزوده شد`, { autoClose: 1000, position: 'bottom-center' })
+    toast.success(`${product.name} افزوده شد`, { autoClose: 1200, position: 'bottom-center' })
   }, [activeId])
 
   const addManualItem = ({ name, price, quantity }) => {
-    setInvoices(prev => prev.map(inv => {
-      if (inv.id !== activeId) return inv
-      return {
-        ...inv, items: [...inv.items, {
-          productId: null, name, price, quantity, total: price * quantity,
-        }]
-      }
+    setInvoices(prev => prev.map(inv => inv.id !== activeId ? inv : {
+      ...inv, items: [...inv.items, { productId: null, name, price, quantity, total: price * quantity }],
     }))
-    toast.success(`${name} افزوده شد`, { autoClose: 1000, position: 'bottom-center' })
+    toast.success(`${name} افزوده شد`, { autoClose: 1200, position: 'bottom-center' })
   }
 
   const updateQty = (idx, delta) => {
-    updateActive(inv => {
-      const items = inv.items.map((it, i) => {
+    updateActive(inv => ({
+      ...inv, items: inv.items.map((it, i) => {
         if (i !== idx) return it
         const q = Math.max(1, it.quantity + delta)
         return { ...it, quantity: q, total: q * it.price }
-      })
-      return { ...inv, items }
-    })
+      }),
+    }))
   }
 
-  const removeItem = (idx) => {
+  const removeItem = (idx) =>
     updateActive(inv => ({ ...inv, items: inv.items.filter((_, i) => i !== idx) }))
-  }
 
+  // ── Barcode detect: find product or open quick-register ──────────────────
   const handleBarcodeDetect = useCallback(async (barcode) => {
     if (barcode === lastBarcode) return
     setLastBarcode(barcode)
@@ -361,12 +358,22 @@ export default function POSPage() {
     if (product) {
       addProduct(product)
     } else {
-      toast.warning(`بارکد ${barcode} در محصولات یافت نشد`, { autoClose: 2000 })
+      // Unknown barcode → close scanner, offer quick registration
+      setShowScanner(false)
+      setQuickRegister(barcode)
     }
   }, [products, addProduct, lastBarcode])
 
+  // ── After quick-register: reload products list + add to invoice ──────────
+  const handleQuickRegisterSave = async (newProduct) => {
+    setQuickRegister(null)
+    await loadProducts()
+    addProduct(newProduct)
+  }
+
+  // ── Submit invoice ────────────────────────────────────────────────────────
   const subtotal = active?.items.reduce((s, it) => s + it.total, 0) || 0
-  const total = Math.max(0, subtotal - (active?.discount || 0))
+  const total    = Math.max(0, subtotal - (active?.discount || 0))
 
   const completeInvoice = async () => {
     if (!active?.items.length) return toast.error('فاکتور خالی است')
@@ -388,8 +395,12 @@ export default function POSPage() {
       })
       if (!res.ok) throw new Error()
       const { invoice } = await res.json()
-      setPrintInvoice({ ...invoice, storeInfo: settings ? { name: settings.storeName, phone: settings.storePhone, address: settings.storeAddress } : {} })
-
+      setPrintInvoice({
+        ...invoice,
+        storeInfo: settings
+          ? { name: settings.storeName, phone: settings.storePhone, address: settings.storeAddress }
+          : {},
+      })
       setInvoices(prev => prev.map(inv => inv.id === activeId
         ? { ...inv, items: [], discount: 0, customer: { firstName: '', lastName: '', phone: '' } }
         : inv
@@ -408,74 +419,78 @@ export default function POSPage() {
     }
   }, [printInvoice])
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 'calc(100vh - 130px)' }}>
-      {/* Invoice Tabs */}
-      <div className="flex items-center gap-1 mb-4 flex-wrap">
+
+      {/* Invoice tabs */}
+      <div className="flex items-center gap-1.5 mb-5 flex-wrap">
         {invoices.map(inv => (
           <div key={inv.id}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-colors
-              ${inv.id === activeId ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:border-blue-400'}`}
-            onClick={() => setActiveId(inv.id)}>
+            onClick={() => setActiveId(inv.id)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer transition-all duration-200 border ${
+              inv.id === activeId
+                ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+                : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-500 hover:text-white'
+            }`}>
             <FiShoppingCart className="w-3.5 h-3.5" />
             <span>{inv.title}</span>
             {inv.items.length > 0 && (
-              <span className={`text-xs rounded-full px-1.5 py-0.5 ${inv.id === activeId ? 'bg-blue-500' : 'bg-gray-200 text-gray-600'}`}>
+              <span className={`text-xs rounded-full px-1.5 py-0.5 font-mono ${inv.id === activeId ? 'bg-brand-500/40 text-brand-200' : 'bg-zinc-700 text-zinc-400'}`}>
                 {inv.items.length}
               </span>
             )}
             {invoices.length > 1 && (
-              <span className="mr-1 opacity-70 hover:opacity-100"
-                onClick={e => { e.stopPropagation(); closeInvoice(inv.id) }}>
+              <span onClick={e => { e.stopPropagation(); closeInvoice(inv.id) }}
+                className="mr-0.5 text-zinc-500 hover:text-red-400 transition-colors">
                 <FiX className="w-3 h-3" />
               </span>
             )}
           </div>
         ))}
         <button onClick={addNewInvoice}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm text-blue-600 border border-dashed border-blue-300 hover:border-blue-500 bg-blue-50 transition-colors">
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm text-brand-400 border border-dashed border-brand-500/40 hover:border-brand-500/70 hover:bg-brand-500/10 transition-all duration-200">
           <FiPlus className="w-3.5 h-3.5" />
           فاکتور جدید
         </button>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4 flex-1">
-        {/* Left: Product add methods */}
-        <div className="lg:w-72 flex-shrink-0 space-y-3">
+      <div className="flex flex-col lg:flex-row gap-5 flex-1">
+
+        {/* ── Left panel: add methods + customer + discount ── */}
+        <div className="lg:w-72 flex-shrink-0 space-y-4">
+
+          {/* Add method buttons */}
           <div className="grid grid-cols-3 gap-2">
-            <button onClick={() => setShowScanner(true)}
-              className="card flex flex-col items-center gap-1.5 py-4 hover:border-blue-400 border-2 transition-colors cursor-pointer">
-              <FiCamera className="w-6 h-6 text-blue-600" />
-              <span className="text-xs font-medium text-gray-700">بارکد</span>
-            </button>
-            <button onClick={() => setShowSearch(true)}
-              className="card flex flex-col items-center gap-1.5 py-4 hover:border-blue-400 border-2 transition-colors cursor-pointer">
-              <FiSearch className="w-6 h-6 text-blue-600" />
-              <span className="text-xs font-medium text-gray-700">جستجو</span>
-            </button>
-            <button onClick={() => setShowManual(true)}
-              className="card flex flex-col items-center gap-1.5 py-4 hover:border-blue-400 border-2 transition-colors cursor-pointer">
-              <FiDollarSign className="w-6 h-6 text-blue-600" />
-              <span className="text-xs font-medium text-gray-700">دستی</span>
-            </button>
+            {[
+              { icon: FiCamera,       label: 'بارکد',  onClick: () => setShowScanner(true),  color: 'text-brand-300',  bg: 'hover:border-brand-500/50 hover:bg-brand-500/10' },
+              { icon: FiSearch,       label: 'جستجو',  onClick: () => setShowSearch(true),   color: 'text-neon-400',   bg: 'hover:border-neon-400/50 hover:bg-neon-400/10' },
+              { icon: FiDollarSign,   label: 'دستی',   onClick: () => setShowManual(true),   color: 'text-hot-400',    bg: 'hover:border-hot-400/50 hover:bg-hot-400/10' },
+            ].map(btn => (
+              <button key={btn.label} onClick={btn.onClick}
+                className={`card flex flex-col items-center gap-1.5 py-4 border-2 border-zinc-700 ${btn.bg} transition-all duration-200`}>
+                <btn.icon className={`w-6 h-6 ${btn.color}`} />
+                <span className={`text-xs font-semibold ${btn.color}`}>{btn.label}</span>
+              </button>
+            ))}
           </div>
 
-          {/* Customer info */}
+          {/* Customer */}
           <div className="card">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">مشتری (اختیاری)</span>
-              <button onClick={() => setShowCustomer(true)} className="text-blue-600 hover:text-blue-700">
-                <FiEdit2 className="w-4 h-4" />
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">مشتری (اختیاری)</span>
+              <button onClick={() => setShowCustomer(true)} className="text-zinc-500 hover:text-brand-300 transition-colors" aria-label="ویرایش">
+                <FiEdit2 className="w-3.5 h-3.5" />
               </button>
             </div>
             {active?.customer?.firstName || active?.customer?.phone ? (
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-zinc-300">
                 {active.customer.firstName} {active.customer.lastName}
-                {active.customer.phone && <div className="text-gray-400 text-xs mt-0.5">{active.customer.phone}</div>}
+                {active.customer.phone && <div className="text-zinc-500 text-xs mt-0.5 font-mono">{active.customer.phone}</div>}
               </div>
             ) : (
               <button onClick={() => setShowCustomer(true)}
-                className="text-sm text-gray-400 hover:text-blue-600 flex items-center gap-1">
+                className="text-xs text-zinc-500 hover:text-brand-300 flex items-center gap-1.5 transition-colors">
                 <FiUser className="w-3.5 h-3.5" />
                 افزودن اطلاعات مشتری
               </button>
@@ -484,7 +499,7 @@ export default function POSPage() {
 
           {/* Discount */}
           <div className="card">
-            <label className="block text-sm font-medium text-gray-700 mb-2">تخفیف (تومان)</label>
+            <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">تخفیف (تومان)</label>
             <input type="number" className="input-field" placeholder="0"
               value={active?.discount || ''}
               onChange={e => updateActive(inv => ({ ...inv, discount: Number(e.target.value) || 0 }))}
@@ -492,44 +507,46 @@ export default function POSPage() {
           </div>
         </div>
 
-        {/* Right: Invoice items + total */}
-        <div className="flex-1 flex flex-col min-h-0">
+        {/* ── Right panel: invoice items + total ── */}
+        <div className="flex-1 flex flex-col min-h-0 gap-4">
           <div className="card flex-1 flex flex-col min-h-0">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-gray-800">اقلام فاکتور</h3>
-              <span className="text-sm text-gray-400">{active?.items.length || 0} آیتم</span>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-heading font-semibold text-white">اقلام فاکتور</h3>
+              <span className="badge-brand font-mono">{active?.items.length || 0} آیتم</span>
             </div>
 
             {!active?.items.length ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-gray-300 py-12">
-                <FiShoppingCart className="w-12 h-12 mb-3" />
-                <p className="text-sm">محصولی اضافه نشده</p>
-                <p className="text-xs mt-1">از بارکد، جستجو یا ورود دستی استفاده کنید</p>
+              <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 py-12 gap-3">
+                <div className="w-16 h-16 rounded-2xl bg-zinc-800 border border-white/10 flex items-center justify-center">
+                  <FiShoppingCart className="w-7 h-7" />
+                </div>
+                <p className="text-sm text-zinc-500">محصولی اضافه نشده</p>
+                <p className="text-xs text-zinc-600">از بارکد، جستجو یا ورود دستی استفاده کنید</p>
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto space-y-2 -mx-1 px-1">
                 {active.items.map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+                  <div key={idx} className="flex items-center gap-3 bg-zinc-800/50 border border-white/5 rounded-xl px-3 py-2.5">
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-800 text-sm truncate">{item.name}</div>
-                      <div className="text-xs text-gray-400">{item.price?.toLocaleString('fa-IR')} تومان/عدد</div>
+                      <div className="font-medium text-white text-sm truncate">{item.name}</div>
+                      <div className="text-xs text-zinc-500 font-mono">{item.price?.toLocaleString('fa-IR')} ت</div>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <button onClick={() => updateQty(idx, -1)}
-                        className="w-7 h-7 bg-white rounded-full shadow flex items-center justify-center hover:bg-gray-100">
-                        <FiMinus className="w-3 h-3 text-gray-600" />
+                        className="w-7 h-7 bg-zinc-700 hover:bg-zinc-600 rounded-full flex items-center justify-center transition-colors">
+                        <FiMinus className="w-3 h-3 text-zinc-300" />
                       </button>
-                      <span className="w-7 text-center font-bold text-gray-800 text-sm">{item.quantity}</span>
+                      <span className="w-8 text-center font-bold text-white text-sm font-mono">{item.quantity}</span>
                       <button onClick={() => updateQty(idx, 1)}
-                        className="w-7 h-7 bg-white rounded-full shadow flex items-center justify-center hover:bg-gray-100">
-                        <FiPlus className="w-3 h-3 text-gray-600" />
+                        className="w-7 h-7 bg-zinc-700 hover:bg-zinc-600 rounded-full flex items-center justify-center transition-colors">
+                        <FiPlus className="w-3 h-3 text-zinc-300" />
                       </button>
                     </div>
-                    <div className="font-bold text-blue-700 text-sm min-w-[70px] text-left">
+                    <div className="font-bold text-brand-300 text-sm font-mono min-w-[70px] text-left">
                       {item.total?.toLocaleString('fa-IR')}
                     </div>
                     <button onClick={() => removeItem(idx)}
-                      className="text-gray-300 hover:text-red-500 p-1">
+                      className="text-zinc-600 hover:text-red-400 transition-colors p-1" aria-label="حذف">
                       <FiTrash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -538,41 +555,63 @@ export default function POSPage() {
             )}
           </div>
 
-          {/* Total & complete */}
-          <div className="card mt-3">
-            <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
+          {/* Total + complete */}
+          <div className="card">
+            <div className="flex items-center justify-between text-sm text-zinc-400 mb-1">
               <span>جمع کالا:</span>
-              <span>{subtotal.toLocaleString('fa-IR')} تومان</span>
+              <span className="font-mono">{subtotal.toLocaleString('fa-IR')} تومان</span>
             </div>
             {(active?.discount > 0) && (
-              <div className="flex items-center justify-between text-sm text-red-600 mb-1">
+              <div className="flex items-center justify-between text-sm text-red-400 mb-1">
                 <span>تخفیف:</span>
-                <span>- {active.discount.toLocaleString('fa-IR')} تومان</span>
+                <span className="font-mono">- {active.discount.toLocaleString('fa-IR')} تومان</span>
               </div>
             )}
-            <div className="flex items-center justify-between font-bold text-xl border-t pt-3 mt-2">
-              <span className="text-gray-800">مجموع:</span>
-              <span className="text-blue-700">{total.toLocaleString('fa-IR')} تومان</span>
+            <div className="divider-glow my-3" />
+            <div className="flex items-center justify-between font-heading font-bold text-xl">
+              <span className="text-white">مجموع:</span>
+              <span className="gradient-text font-mono">{total.toLocaleString('fa-IR')} تومان</span>
             </div>
 
             <button onClick={completeInvoice} disabled={saving || !active?.items.length}
-              className="btn-success w-full mt-4 py-3 text-base flex items-center justify-center gap-2">
-              <FiCheck className="w-5 h-5" />
-              {saving ? 'در حال ثبت...' : 'تکمیل و چاپ فاکتور'}
+              className="btn-primary w-full mt-4 py-3.5 text-base flex items-center justify-center gap-2">
+              {saving ? (
+                <><span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />در حال ثبت...</>
+              ) : (
+                <><FiCheck className="w-5 h-5" />تکمیل و چاپ فاکتور</>
+              )}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Modals */}
-      {showScanner && <BarcodeScanner onDetect={handleBarcodeDetect} onClose={() => setShowScanner(false)} />}
-      {showSearch && <ProductSearchModal products={products} onSelect={p => addProduct(p)} onClose={() => setShowSearch(false)} />}
-      {showManual && <ManualItemModal onAdd={addManualItem} onClose={() => setShowManual(false)} />}
+      {/* ── Modals ── */}
+      {showScanner && (
+        <BarcodeScanner
+          title="اسکن بارکد — صندوق فروش"
+          onDetect={handleBarcodeDetect}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+      {showSearch && (
+        <ProductSearchModal products={products} onSelect={p => addProduct(p)} onClose={() => setShowSearch(false)} />
+      )}
+      {showManual && (
+        <ManualItemModal onAdd={addManualItem} onClose={() => setShowManual(false)} />
+      )}
       {showCustomer && (
         <CustomerModal
           customer={active?.customer}
           onChange={c => updateActive(inv => ({ ...inv, customer: c }))}
           onClose={() => setShowCustomer(false)}
+        />
+      )}
+      {quickRegister && (
+        <QuickRegisterModal
+          barcode={quickRegister}
+          categories={categories}
+          onSave={handleQuickRegisterSave}
+          onClose={() => setQuickRegister(null)}
         />
       )}
 
