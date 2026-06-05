@@ -3,7 +3,10 @@ import mongoose from 'mongoose'
 const paymentReceiptSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   planId: { type: mongoose.Schema.Types.ObjectId, ref: 'SubscriptionPlan', required: true },
-  receiptImage: { type: String, required: true },
+  receiptImage: {
+    data: { type: Buffer, required: true },
+    contentType: { type: String, required: true },
+  },
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],

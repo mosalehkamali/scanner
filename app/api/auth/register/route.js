@@ -4,8 +4,6 @@ import connectDB from '@/lib/db'
 import User from '@/models/User'
 import PaymentReceipt from '@/models/PaymentReceipt'
 import SubscriptionPlan from '@/models/SubscriptionPlan'
-import { writeFile, mkdir } from 'fs/promises'
-import { join } from 'path'
 
 export async function POST(request) {
   try {
@@ -33,15 +31,9 @@ export async function POST(request) {
       return NextResponse.json({ error: 'پلان انتخابی معتبر نیست' }, { status: 400 })
     }
 
-    const uploadDir = join(process.cwd(), 'public', 'uploads', 'receipts')
-    await mkdir(uploadDir, { recursive: true })
-
     const bytes = await receiptFile.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    const ext = receiptFile.name.split('.').pop()
-    const filename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`
-    const filePath = join(uploadDir, filename)
-    await writeFile(filePath, buffer)
+    const imageBuffer = Buffer.from(bytes)
+    const contentType = receiptFile.type || 'image/jpeg'
 
     const hashedPassword = await bcrypt.hash(password, 12)
     const user = await User.create({
@@ -57,7 +49,7 @@ export async function POST(request) {
     await PaymentReceipt.create({
       userId: user._id,
       planId,
-      receiptImage: `/uploads/receipts/${filename}`,
+      receiptImage: { data: imageBuffer, contentType },
       status: 'pending',
     })
 
